@@ -4,9 +4,12 @@ import logging
 from typing import Optional
 from langchain_openai import ChatOpenAI, AzureChatOpenAI
 # from google import genai
-import google.generativeai as genai
+# import google.generativeai as genai
 # from google.genai import types
-from google.generativeai import types
+# from google.generativeai import types
+
+from google import genai
+from google.genai import types
 from azure.ai.inference import ChatCompletionsClient
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.inference.models import SystemMessage, UserMessage
@@ -99,35 +102,47 @@ class OpenAIAdapter(BaseLLMAdapter):
 class GeminiAdapter(BaseLLMAdapter):
     """
     适配 Google Gemini (Google Generative AI) 接口
+    注意事项:
+    1. model_name 建议使用 'gemini-1.0-pro' 或 'gemini-2.0-flash'
+    2. base_url 默认为 'https://generativelanguage.googleapis.com/v1beta'
     """
     def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
         self.api_key = api_key
         self.model_name = model_name
         self.max_tokens = max_tokens
         self.temperature = temperature
-        # gemini超时时间是毫秒
-        self.timeout = timeout * 1000
+        self.timeout = timeout * 1000  # 转换为毫秒
 
-        self._client = genai.Client(api_key=self.api_key,http_options=types.HttpOptions(base_url=base_url,timeout=self.timeout))
+        # 初始化 Gemini 客户端
+        self.client = genai.Client(api_key=self.api_key)
+
 
     def invoke(self, prompt: str) -> str:
         try:
-            response = self._client.models.generate_content(
-                model = self.model_name,
-                contents = prompt,
-                config = types.GenerateContentConfig(
-                    max_output_tokens=self.max_tokens,
+            # 使用新的 generate_content 方法
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[{"parts":[{"text": prompt}]}],
+                config=types.GenerateContentConfig(
                     temperature=self.temperature,
+                    max_output_tokens=self.max_tokens,
+
                 ),
             )
-            if response and response.text:
-                return response.text
-            else:
-                logging.warning("No text response from Gemini API.")
-                return ""
+            
+            if response and response.candidates and len(response.candidates) > 0:
+                # 获取第一个候选结果的文本内容
+                content = response.candidates[0].content
+                if content and content.parts:
+                    return content.parts[0].text
+            
+            logging.warning("No text response from Gemini API.")
+            return ""
+            
         except Exception as e:
             logging.error(f"Gemini API 调用失败: {e}")
             return ""
+
 
 class AzureOpenAIAdapter(BaseLLMAdapter):
     """
