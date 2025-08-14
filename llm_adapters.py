@@ -102,9 +102,6 @@ class OpenAIAdapter(BaseLLMAdapter):
 class GeminiAdapter(BaseLLMAdapter):
     """
     适配 Google Gemini (Google Generative AI) 接口
-    注意事项:
-    1. model_name 建议使用 'gemini-1.0-pro' 或 'gemini-2.0-flash'
-    2. base_url 默认为 'https://generativelanguage.googleapis.com/v1beta'
     """
     def __init__(self, api_key: str, base_url: str, model_name: str, max_tokens: int, temperature: float = 0.7, timeout: Optional[int] = 600):
         self.api_key = api_key
@@ -113,31 +110,25 @@ class GeminiAdapter(BaseLLMAdapter):
         self.temperature = temperature
         self.timeout = timeout * 1000  # 转换为毫秒
 
-        # 初始化 Gemini 客户端
         self.client = genai.Client(api_key=self.api_key)
-
+        # 这里不加入 base_url 才不会报错
+        # self.client = genai.Client(api_key=self.api_key,http_options=types.HttpOptions(base_url=base_url,timeout=self.timeout))
 
     def invoke(self, prompt: str) -> str:
         try:
-            # 使用新的 generate_content 方法
             response = self.client.models.generate_content(
                 model=self.model_name,
-                contents=[{"parts":[{"text": prompt}]}],
+                contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=self.temperature,
                     max_output_tokens=self.max_tokens,
-
                 ),
             )
-            
-            if response and response.candidates and len(response.candidates) > 0:
-                # 获取第一个候选结果的文本内容
-                content = response.candidates[0].content
-                if content and content.parts:
-                    return content.parts[0].text
-            
-            logging.warning("No text response from Gemini API.")
-            return ""
+            if response and response.text:
+                return response.text
+            else:
+                logging.warning("No text response from Gemini API.")
+                return ""
             
         except Exception as e:
             logging.error(f"Gemini API 调用失败: {e}")
